@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pack 130 Geneva — Pinewood Derby Manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Montserrat', sans-serif; background-color: #f4f6f9; color: #1e293b; }
+    .navy-bg { background-color: #004587; }
+    .gold-bg { background-color: #fbba07; }
+    .red-bg  { background-color: #e73037; }
+    .lane-card { transition: all 0.12s ease-in-out; user-select: none; }
+    .lane-card:active { transform: scale(0.97); }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- TOP HEADER -->
+  <header class="navy-bg text-white shadow-lg border-b-4 border-[#fbba07]">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <span class="text-3xl">🏎️</span>
+        <div>
+          <h1 class="text-xl font-black tracking-wider uppercase leading-none">Pack 130 Geneva</h1>
+          <p class="text-xs text-[#fbba07] font-bold tracking-widest uppercase mt-0.5">Pinewood Derby Race Control</p>
+        </div>
+      </div>
+
+      <!-- Rules Mode & Stage Pill -->
+      <div class="flex flex-wrap items-center gap-3">
+        <div class="bg-blue-950/80 px-3 py-1.5 rounded-lg border border-blue-700 flex items-center gap-2 text-xs">
+          <span class="text-blue-200 font-semibold">Scoring Mode:</span>
+          <select id="rulesModeSelect" onchange="changeRulesMode(this.value)" class="bg-transparent font-bold text-[#fbba07] focus:outline-none cursor-pointer">
+            <option value="AVERAGE" class="text-slate-900">Deck Rules (Lowest Avg + Wildcard)</option>
+            <option value="POINTS" class="text-slate-900">Manual Plan (6-5-4-3-2-1 Pts + Top 3)</option>
+          </select>
+        </div>
+
+        <div id="stageBadge" class="gold-bg text-slate-900 font-extrabold text-xs px-3 py-1.5 rounded-lg uppercase tracking-wider">
+          STAGE: CHECK-IN
+        </div>
+
+        <!-- Backup / Reset Controls -->
+        <button onclick="exportJson()" class="bg-white/10 hover:bg-white/20 text-white text-xs font-bold px-3 py-1.5 rounded-lg" title="Download JSON Backup">
+          💾 Export
+        </button>
+        <label class="bg-white/10 hover:bg-white/20 text-white text-xs font-bold px-3 py-1.5 rounded-lg cursor-pointer" title="Restore JSON Backup">
+          📂 Import <input type="file" accept=".json" onchange="importJson(event)" class="hidden" />
+        </label>
+        <button onclick="confirmReset()" class="red-bg hover:bg-red-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg">
+          ⚠️ Reset
+        </button>
+      </div>
+    </div>
+
+    <!-- NAVIGATION TABS -->
+    <div class="max-w-7xl mx-auto px-4 flex gap-2 pt-2">
+      <button onclick="switchTab('CHECK_IN')" id="tab-CHECK_IN" class="tab-btn px-5 py-2.5 rounded-t-lg font-extrabold text-xs uppercase tracking-wider">
+        1. Webelos Check-In
+      </button>
+      <button onclick="switchTab('RACE_CONTROL')" id="tab-RACE_CONTROL" class="tab-btn px-5 py-2.5 rounded-t-lg font-extrabold text-xs uppercase tracking-wider">
+        2. Live Track & Scoring
+      </button>
+      <button onclick="switchTab('STANDINGS')" id="tab-STANDINGS" class="tab-btn px-5 py-2.5 rounded-t-lg font-extrabold text-xs uppercase tracking-wider">
+        3. Standings & Tie-Breakers
+      </button>
+      <button onclick="switchTab('BRACKET')" id="tab-BRACKET" class="tab-btn px-5 py-2.5 rounded-t-lg font-extrabold text-xs uppercase tracking-wider">
+        4. Championship Bracket
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN WORKSPACE -->
+  <main class="max-w-7xl w-full mx-auto p-4 flex-1">
+
+    <!-- ==========================================
+         TAB 1: WEBELOS CAR CHECK-IN
+         ========================================== -->
+    <section id="view-CHECK_IN" class="space-y-6">
+      <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 class="text-lg font-black text-[#004587] uppercase">Webelos Car Check-In & Inspection</h2>
+          <p class="text-xs text-slate-500">Log each car into its Den. Supports any number of cars per Den (automatically balances 6-lane heats).</p>
+        </div>
+        <div class="flex flex-wrap gap-3">
+          <button onclick="loadDemoAndRender()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs px-4 py-2.5 rounded-lg border border-slate-300">
+            🧪 Load 33-Car Demo Roster (Sizes: 4, 6, 8, 5, 7, 3)
+          </button>
+          <button onclick="lockAndStartQualifying()" class="navy-bg hover:bg-blue-900 text-white font-black text-xs px-5 py-2.5 rounded-lg shadow uppercase tracking-wider">
+            🏁 Lock Roster & Generate Qualifying Heats →
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Add Car Bar -->
+      <form onsubmit="handleAddCar(event)" class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+        <div>
+          <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Den</label>
+          <select id="inputDen" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-bold focus:outline-none focus:border-[#004587]">
+            <option value="Lions">🦁 Lions</option>
+            <option value="Tigers">🐯 Tigers</option>
+            <option value="Wolves">🐺 Wolves</option>
+            <option value="Bears">🐻 Bears</option>
+            <option value="Webelos">🧭 Webelos</option>
+            <option value="AOLs">🏹 AOLs</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Cub Scout Name</label>
+          <input id="inputCub" type="text" required placeholder="e.g. Lucas M." class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#004587]" />
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Car Name</label>
+          <input id="inputCar" type="text" placeholder="e.g. Alpine Rocket" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#004587]" />
+        </div>
+        <button type="submit" class="gold-bg hover:bg-amber-400 text-slate-900 font-black text-sm py-2 px-4 rounded-lg uppercase tracking-wider">
+          + Check In Car
+        </button>
+      </form>
+
+      <!-- 6 Den Columns -->
+      <div id="denRosterGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+    </section>
+
+    <!-- ==========================================
+         TAB 2: LIVE RACE CONTROL (OPERATING RHYTHM)
+         ========================================== -->
+    <section id="view-RACE_CONTROL" class="hidden space-y-6">
+      <!-- Stage Progression Banner -->
+      <div id="stageActionBanner" class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-4"></div>
+
+      <!-- ON TRACK & ON DECK CARDS -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- LEFT 2 COLS: ON TRACK & JUDGE SCORING PAD -->
+        <div class="lg:col-span-2 bg-white rounded-xl shadow-md border-2 border-[#004587] overflow-hidden">
+          <div class="navy-bg text-white px-5 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="inline-block w-3 h-3 rounded-full bg-green-400 animate-pulse"></span>
+              <h3 id="onTrackTitle" class="font-black text-base uppercase tracking-wider">ON TRACK — CURRENT HEAT</h3>
+            </div>
+            <span id="onTrackSubtitle" class="text-xs font-bold text-[#fbba07] uppercase"></span>
+          </div>
+
+          <div class="p-5 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-2 bg-slate-50 p-3 rounded-lg border border-slate-200">
+              <p class="text-xs font-semibold text-slate-600">
+                👀 <strong>Finish Judges Call Order:</strong> Tap lanes below in the order they finish (<span class="text-[#004587] font-bold">1st tap = 1st place</span>, etc.)
+              </p>
+              <div class="flex gap-2">
+                <button onclick="clearCurrentTapOrder()" class="text-xs font-bold bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-1 rounded">
+                  Clear Taps
+                </button>
+                <button onclick="triggerImmediateRerun()" class="text-xs font-bold bg-red-100 hover:bg-red-200 text-[#e73037] px-3 py-1 rounded">
+                  🔄 Tie / Problem: Re-Run Heat
+                </button>
+              </div>
+            </div>
+
+            <!-- 6 LANE TAP GRID -->
+            <div id="onTrackLanesGrid" class="grid grid-cols-2 sm:grid-cols-3 gap-3"></div>
+
+            <!-- SUBMIT HEAT BUTTON -->
+            <div class="pt-2 flex justify-end">
+              <button id="submitHeatBtn" onclick="submitActiveHeatScores()" class="w-full sm:w-auto navy-bg hover:bg-blue-900 disabled:opacity-40 text-white font-black text-sm px-8 py-3 rounded-xl shadow-md uppercase tracking-wider">
+                ✅ Record Finish & Load Next Heat →
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT COL: ON DECK (STAGING) & HEAT QUEUE -->
+        <div class="space-y-4">
+          <div class="bg-white rounded-xl shadow-sm border-2 border-[#fbba07] overflow-hidden">
+            <div class="gold-bg text-slate-900 px-4 py-2.5 flex items-center justify-between">
+              <h3 class="font-black text-sm uppercase tracking-wider">⏳ ON DECK — STAGE NEXT</h3>
+              <span id="onDeckSubtitle" class="text-xs font-extrabold uppercase"></span>
+            </div>
+            <div id="onDeckLanesList" class="p-4 space-y-2 text-xs"></div>
+          </div>
+
+          <!-- ALL HEATS QUEUE -->
+          <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="bg-slate-800 text-white px-4 py-2.5 flex items-center justify-between">
+              <h3 class="font-bold text-xs uppercase tracking-wider">📋 Heat Schedule Queue</h3>
+              <span id="heatProgressCounter" class="text-xs text-[#fbba07] font-bold"></span>
+            </div>
+            <div id="heatQueueList" class="max-h-72 overflow-y-auto divide-y divide-slate-100 text-xs"></div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ==========================================
+         TAB 3: STANDINGS & TIE-BREAKERS
+         ========================================== -->
+    <section id="view-STANDINGS" class="hidden space-y-6">
+      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 class="text-lg font-black text-[#004587] uppercase">Live Standings & Tie-Breaker Control</h2>
+          <p class="text-xs text-slate-500">Top 2 from each Den advance to the 12-car Semifinals. Ties for qualifying spots are settled on the track.</p>
+        </div>
+        <div id="standingsStageFilter" class="flex flex-wrap gap-2">
+          <button onclick="renderStandings('QUALIFYING')" class="px-3 py-1.5 rounded-lg font-bold text-xs bg-[#004587] text-white">Den Qualifying</button>
+          <button onclick="renderStandings('SEMIFINALS')" class="px-3 py-1.5 rounded-lg font-bold text-xs bg-slate-200 text-slate-700">Semifinals</button>
+          <button onclick="renderStandings('WILDCARD')" class="px-3 py-1.5 rounded-lg font-bold text-xs bg-slate-200 text-slate-700">Wildcard</button>
+          <button onclick="renderStandings('FINALS')" class="px-3 py-1.5 rounded-lg font-bold text-xs bg-slate-200 text-slate-700">Grand Final</button>
+        </div>
+      </div>
+
+      <div id="standingsCardsGrid" class="grid grid-cols-1 md:grid-cols-2 gap-5"></div>
+    </section>
+
+    <!-- ==========================================
+         TAB 4: CHAMPIONSHIP BRACKET
+         ========================================== -->
+    <section id="view-BRACKET" class="hidden space-y-6">
+      <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+        <h2 class="text-lg font-black text-[#004587] uppercase">Pack 130 Championship Pathway</h2>
+        <p class="text-xs text-slate-500">6 Dens (Top 2 each) ➔ 12 Semifinalists (Split into Groups A & B) ➔ 6 Finalists ➔ Pack Champion</p>
+      </div>
+      <div id="bracketContainer" class="grid grid-cols-1 lg:grid-cols-3 gap-6"></div>
+    </section>
+
+  </main>
+
+  <!-- LOAD ENGINE FIRST -->
+  <script src="derby-engine.js"></script>
+
+  <!-- UI CONTROLLER SCRIPT -->
+  <script>
+    const engine = new DerbyEngine();
+    let currentTab = 'CHECK_IN';
+    let currentTapOrder = []; // Stores lane numbers tapped in sequence for active heat
+    let activeStandingsStage = 'QUALIFYING';
+
+    function initApp() {
+      document.getElementById('rulesModeSelect').value = engine.state.rulesMode;
+      if (engine.state.stage !== 'CHECK_IN' && engine.state.heats.length > 0) {
+        switchTab('RACE_CONTROL');
+      } else {
+        switchTab('CHECK_IN');
+      }
+      renderAll();
+    }
+
+    function switchTab(tabId) {
+      currentTab = tabId;
+      ['CHECK_IN', 'RACE_CONTROL', 'STANDINGS', 'BRACKET'].forEach(id => {
+        const view = document.getElementById(`view-${id}`);
+        const btn = document.getElementById(`tab-${id}`);
+        if (id === tabId) {
+          view.classList.remove('hidden');
+          btn.className = 'tab-btn px-5 py-2.5 rounded-t-lg font-extrabold text-xs uppercase tracking-wider bg-[#f4f6f9] text-[#004587]';
+        } else {
+          view.classList.add('hidden');
+          btn.className = 'tab-btn px-5 py-2.5 rounded-t-lg font-extrabold text-xs uppercase tracking-wider bg-blue-950/60 text-blue-200 hover:bg-blue-900';
+        }
+      });
+      renderAll();
+    }
+
+    function changeRulesMode(mode) {
+      engine.state.rulesMode = mode;
+      engine.saveState();
+      renderAll();
+    }
+
+    function renderAll() {
+      document.getElementById('stageBadge').textContent = `STAGE: ${engine.state.stage}`;
+      renderCheckIn();
+      renderRaceControl();
+      renderStandings(activeStandingsStage);
+      renderBracket();
+    }
+
+    // ==========================================
+    // TAB 1: CHECK-IN RENDER & HANDLERS
+    // ==========================================
+    function handleAddCar(e) {
+      e.preventDefault();
+      const den = document.getElementById('inputDen').value;
+      const cub = document.getElementById('inputCub').value;
+      const car = document.getElementById('inputCar').value;
+      engine.addCar(den, cub, car);
+      document.getElementById('inputCub').value = '';
+      document.getElementById('inputCar').value = '';
+      renderCheckIn();
+    }
+
+    function loadDemoAndRender() {
+      engine.loadDemoRoster();
+      renderAll();
+    }
+
+    function lockAndStartQualifying() {
+      if (engine.state.cars.length < 2) {
+        alert('Please check in at least 2 cars or click "Load 33-Car Demo Roster" first.');
+        return;
+      }
+      engine.startQualifying();
+      currentTapOrder = [];
+      switchTab('RACE_CONTROL');
+    }
+
+    function renderCheckIn() {
+      const grid = document.getElementById('denRosterGrid');
+      grid.innerHTML = DENS.map(den => {
+        const denCars = engine.state.cars.filter(c => c.den === den.id);
+        const heatCount = denCars.length === 0 ? 0 : (denCars.length <= 6 ? 3 : Math.ceil((denCars.length * 3) / 6));
+        return `
+          <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+            <div class="navy-bg text-white px-4 py-2.5 flex items-center justify-between">
+              <span class="font-extrabold text-sm uppercase">${den.emoji} ${den.name}</span>
+              <span class="text-xs bg-white/20 px-2 py-0.5 rounded font-bold">${denCars.length} Cars (${heatCount} Heats)</span>
+            </div>
+            <div class="p-3 flex-1 divide-y divide-slate-100 text-xs">
+              ${denCars.length === 0 ? `<p class="text-slate-400 italic py-4 text-center">No cars checked in yet</p>` : ''}
+              ${denCars.map(c => `
+                <div class="py-2 flex items-center justify-between">
+                  <div>
+                    <span class="inline-block w-9 font-black text-[#004587]">${c.id}</span>
+                    <span class="font-bold text-slate-800">${c.carName}</span>
+                    <span class="text-slate-500 ml-1">(${c.cubName})</span>
+                  </div>
+                  <button onclick="engine.removeCar('${c.id}'); renderCheckIn();" class="text-red-500 hover:text-red-700 font-bold px-1">✕</button>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // ==========================================
+    // TAB 2: LIVE RACE CONTROL & SCORING PAD
+    // ==========================================
+    function selectHeat(heatId) {
+      engine.state.activeHeatId = heatId;
+      currentTapOrder = [];
+      engine.saveState();
+      renderRaceControl();
+    }
+
+    function toggleLaneTap(laneNum) {
+      const idx = currentTapOrder.indexOf(laneNum);
+      if (idx !== -1) {
+        currentTapOrder.splice(idx, 1);
+      } else {
+        currentTapOrder.push(laneNum);
+      }
+      renderRaceControl();
+    }
+
+    function clearCurrentTapOrder() {
+      currentTapOrder = [];
+      renderRaceControl();
+    }
+
+    function triggerImmediateRerun() {
+      const activeHeat = engine.state.heats.find(h => h.id === engine.state.activeHeatId);
+      if (!activeHeat) return;
+      engine.rerunHeat(activeHeat.id);
+      currentTapOrder = [];
+      renderRaceControl();
+    }
+
+    function submitActiveHeatScores() {
+      const activeHeat = engine.state.heats.find(h => h.id === engine.state.activeHeatId);
+      if (!activeHeat) return;
+
+      if (currentTapOrder.length < activeHeat.lanes.length) {
+        alert(`Please tap all ${activeHeat.lanes.length} lanes in their finishing order before recording.`);
+        return;
+      }
+
+      const finishMap = {};
+      currentTapOrder.forEach((laneNum, idx) => {
+        finishMap[laneNum] = idx + 1; // 1st, 2nd, 3rd...
+      });
+
+      engine.recordHeatResult(activeHeat.id, finishMap);
+      currentTapOrder = [];
+      renderAll();
+    }
+
+    function autoSimulateRemainingStageHeats() {
+      const stageHeats = engine.state.heats.filter(h => h.stage === engine.state.stage && h.status === 'PENDING');
+      stageHeats.forEach(heat => {
+        const shuffledLanes = [...heat.lanes].sort(() => Math.random() - 0.5);
+        const map = {};
+        shuffledLanes.forEach((slot, idx) => { map[slot.lane] = idx + 1; });
+        engine.recordHeatResult(heat.id, map);
+      });
+      currentTapOrder = [];
+      renderAll();
+    }
+
+    function renderRaceControl() {
+      const banner = document.getElementById('stageActionBanner');
+      const stageHeats = engine.state.heats.filter(h => h.stage === engine.state.stage);
+      const pendingStageHeats = stageHeats.filter(h => h.status === 'PENDING');
+
+      // Stage transition button logic
+      let nextStageControls = '';
+      if (stageHeats.length > 0 && pendingStageHeats.length === 0) {
+        if (engine.state.stage === 'QUALIFYING') {
+          nextStageControls = `<button onclick="engine.startSemifinals(); activeStandingsStage='SEMIFINALS'; renderAll();" class="gold-bg hover:bg-amber-400 text-slate-900 font-black text-xs px-5 py-2.5 rounded-lg shadow uppercase">🔥 All Qualifying Complete! Generate 12-Car Semifinals →</button>`;
+        } else if (engine.state.stage === 'SEMIFINALS') {
+          if (engine.state.rulesMode === 'AVERAGE') {
+            nextStageControls = `
+              <button onclick="engine.startWildcardRace(); activeStandingsStage='WILDCARD'; renderAll();" class="gold-bg hover:bg-amber-400 text-slate-900 font-black text-xs px-4 py-2.5 rounded-lg shadow uppercase">⚡ Run Wildcard Race (For Final 2 Spots) →</button>
+              <button onclick="engine.startGrandFinal(); activeStandingsStage='FINALS'; renderAll();" class="navy-bg text-white font-bold text-xs px-4 py-2.5 rounded-lg">Skip Wildcard (Top 3 Advance) →</button>
+            `;
+          } else {
+            nextStageControls = `<button onclick="engine.startGrandFinal(); activeStandingsStage='FINALS'; renderAll();" class="gold-bg hover:bg-amber-400 text-slate-900 font-black text-xs px-5 py-2.5 rounded-lg shadow uppercase">🏆 Semifinals Complete! Generate 6-Car Grand Final →</button>`;
+          }
+        } else if (engine.state.stage === 'WILDCARD') {
+          nextStageControls = `<button onclick="engine.startGrandFinal(); activeStandingsStage='FINALS'; renderAll();" class="gold-bg hover:bg-amber-400 text-slate-900 font-black text-xs px-5 py-2.5 rounded-lg shadow uppercase">🏆 Wildcard Complete! Launch 6-Car Grand Final →</button>`;
+        } else if (engine.state.stage === 'FINALS') {
+          nextStageControls = `<button onclick="switchTab('BRACKET')" class="gold-bg text-slate-900 font-black text-xs px-5 py-2.5 rounded-lg shadow uppercase">🎉 Grand Final Complete! View Pack Champion →</button>`;
+        }
+      }
+
+      banner.innerHTML = `
+        <div>
+          <span class="text-xs font-extrabold uppercase text-[#004587]">Current Stage: ${engine.state.stage}</span>
+          <p class="text-xs text-slate-500">${stageHeats.length - pendingStageHeats.length} of ${stageHeats.length} heats completed in this stage.</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          ${pendingStageHeats.length > 0 ? `
+            <button onclick="autoSimulateRemainingStageHeats()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs px-3 py-2 rounded-lg border border-slate-300">
+              ⚡ Quick-Simulate Remaining ${pendingStageHeats.length} Heats (Test Mode)
+            </button>
+          ` : ''}
+          ${nextStageControls}
+        </div>
+      `;
+
+      const activeHeat = engine.state.heats.find(h => h.id === engine.state.activeHeatId) || stageHeats[0];
+      const onTrackGrid = document.getElementById('onTrackLanesGrid');
+
+      if (!activeHeat) {
+        document.getElementById('onTrackTitle').textContent = 'NO HEATS GENERATED YET';
+        onTrackGrid.innerHTML = `<p class="col-span-3 text-center py-8 text-slate-400 text-sm">Lock the Check-In Roster first to generate heats.</p>`;
+        return;
+      }
+
+      // Populate pre-existing finishes if viewing a completed heat
+      if (activeHeat.status === 'COMPLETED' && currentTapOrder.length === 0) {
+        currentTapOrder = [...activeHeat.lanes]
+          .filter(l => l.finish !== null)
+          .sort((a, b) => a.finish - b.finish)
+          .map(l => l.lane);
+      }
+
+      document.getElementById('onTrackTitle').textContent = `ON TRACK — ${activeHeat.group.toUpperCase()} (HEAT ${activeHeat.heatNumber})`;
+      document.getElementById('onTrackSubtitle').textContent = activeHeat.status === 'COMPLETED' ? '✅ COMPLETED (TAP TO EDIT)' : '🟢 READY TO RACE';
+
+      // Render 6 tracks (Lanes 1..6)
+      onTrackGrid.innerHTML = [1, 2, 3, 4, 5, 6].map(laneNum => {
+        const slot = activeHeat.lanes.find(l => l.lane === laneNum);
+        if (!slot) {
+          return `
+            <div class="p-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 flex flex-col justify-between opacity-50">
+              <span class="text-xs font-bold text-slate-400 uppercase">Lane ${laneNum}</span>
+              <span class="text-xs italic text-slate-400 my-4 text-center">Empty Lane</span>
+              <span></span>
+            </div>
+          `;
+        }
+
+        const car = engine.state.cars.find(c => c.id === slot.carId);
+        const tapRankIdx = currentTapOrder.indexOf(laneNum);
+        const finishPos = tapRankIdx !== -1 ? tapRankIdx + 1 : null;
+        const suffixes = ['1st 🥇', '2nd 🥈', '3rd 🥉', '4th', '5th', '6th'];
+
+        return `
+          <div onclick="toggleLaneTap(${laneNum})" class="lane-card cursor-pointer p-4 rounded-xl border-2 flex flex-col justify-between ${
+            finishPos === 1 ? 'border-[#fbba07] bg-amber-50/70 shadow-md' :
+            finishPos !== null ? 'border-[#004587] bg-blue-50/50' :
+            'border-slate-200 hover:border-slate-400 bg-white'
+          }">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-black uppercase px-2 py-0.5 rounded bg-slate-900 text-white">LANE ${laneNum}</span>
+              <span class="text-lg font-black text-[#004587]">${slot.carId}</span>
+            </div>
+            <div class="my-3">
+              <div class="font-extrabold text-sm text-slate-900 truncate">${car?.carName || slot.carId}</div>
+              <div class="text-xs text-slate-500 truncate">${car?.cubName || ''} • ${car?.den || ''}</div>
+            </div>
+            <div class="pt-2 border-t border-slate-200/80 flex items-center justify-between">
+              <span class="text-[11px] font-bold text-slate-400 uppercase">Finish Order:</span>
+              ${finishPos !== null
+                ? `<span class="px-2.5 py-0.5 rounded-full font-black text-xs ${finishPos === 1 ? 'gold-bg text-slate-900' : 'navy-bg text-white'}">${suffixes[finishPos - 1]}</span>`
+                : `<span class="text-xs font-bold text-slate-400">Tap when finished</span>`
+              }
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      document.getElementById('submitHeatBtn').disabled = currentTapOrder.length < activeHeat.lanes.length;
+
+      // Render ON DECK (Next Pending Heat)
+      const pendingHeats = engine.state.heats.filter(h => h.status === 'PENDING' && h.id !== activeHeat.id);
+      const onDeckHeat = pendingHeats[0];
+      const onDeckList = document.getElementById('onDeckLanesList');
+
+      if (!onDeckHeat) {
+        document.getElementById('onDeckSubtitle').textContent = 'NONE';
+        onDeckList.innerHTML = `<p class="text-slate-400 italic py-2">No more pending heats in queue.</p>`;
+      } else {
+        document.getElementById('onDeckSubtitle').textContent = `${onDeckHeat.group} — Heat ${onDeckHeat.heatNumber}`;
+        onDeckList.innerHTML = onDeckHeat.lanes.map(slot => {
+          const car = engine.state.cars.find(c => c.id === slot.carId);
+          return `
+            <div class="flex items-center justify-between py-1.5 px-2.5 bg-amber-50/60 rounded border border-amber-200/80">
+              <span class="font-black text-slate-800">Lane ${slot.lane}: <span class="text-[#004587]">${slot.carId}</span></span>
+              <span class="font-semibold text-slate-600">${car?.carName || ''} (${car?.cubName || ''})</span>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // Render Queue List
+      const completedCount = stageHeats.filter(h => h.status === 'COMPLETED').length;
+      document.getElementById('heatProgressCounter').textContent = `${completedCount}/${stageHeats.length} Done`;
+
+      document.getElementById('heatQueueList').innerHTML = stageHeats.map(h => `
+        <div onclick="selectHeat('${h.id}')" class="px-4 py-2.5 flex items-center justify-between cursor-pointer hover:bg-slate-50 ${h.id === activeHeat.id ? 'bg-blue-50 font-bold border-l-4 border-[#004587]' : ''}">
+          <div>
+            <span class="font-extrabold text-slate-800">${h.group} — Heat ${h.heatNumber}</span>
+            <span class="text-slate-400 ml-1">(${h.lanes.length} cars)</span>
+          </div>
+          <span class="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+            h.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+            h.id === activeHeat.id ? 'gold-bg text-slate-900' : 'bg-slate-100 text-slate-600'
+          }">
+            ${h.status === 'COMPLETED' ? 'Done' : h.id === activeHeat.id ? 'On Track' : 'Pending'}
+          </span>
+        </div>
+      `).join('');
+    }
+
+    // ==========================================
+    // TAB 3: STANDINGS & TIE-BREAKER SPAWNER
+    // ==========================================
+    function renderStandings(stageName) {
+      activeStandingsStage = stageName;
+      const container = document.getElementById('standingsCardsGrid');
+
+      let groups = [];
+      if (stageName === 'QUALIFYING') groups = DENS.map(d => d.id);
+      else if (stageName === 'SEMIFINALS') groups = ['Semifinal A', 'Semifinal B'];
+      else if (stageName === 'WILDCARD') groups = ['Wildcard Race'];
+      else if (stageName === 'FINALS') groups = ['Grand Final'];
+
+      container.innerHTML = groups.map(groupName => {
+        const rows = engine.getGroupStandings(stageName, groupName);
+        const cutoff = stageName === 'QUALIFYING' ? 2 : (stageName === 'SEMIFINALS' && engine.state.rulesMode === 'POINTS' ? 3 : 2);
+
+        // Check if there is an unresolved tie right at the advancement cutoff
+        let tiedCarIds = [];
+        if (rows.length > cutoff && rows[cutoff - 1].racesCompleted > 0) {
+          const boundaryRow = rows[cutoff - 1];
+          const nextRow = rows[cutoff];
+          const metricSame = engine.state.rulesMode === 'AVERAGE'
+            ? boundaryRow.avgFinish === nextRow.avgFinish
+            : boundaryRow.pointsSum === nextRow.pointsSum;
+          if (metricSame && boundaryRow.tieBreakerRank === null) {
+            tiedCarIds = rows
+              .filter(r => (engine.state.rulesMode === 'AVERAGE' ? r.avgFinish === boundaryRow.avgFinish : r.pointsSum === boundaryRow.pointsSum))
+              .map(r => r.carId);
+          }
+        }
+
+        return `
+          <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="navy-bg text-white px-4 py-2.5 flex items-center justify-between">
+              <span class="font-extrabold text-sm uppercase">${groupName} Standings</span>
+              <span class="text-[11px] font-bold text-[#fbba07]">Top ${ stageName === 'FINALS' ? 1 : cutoff } Advance</span>
+            </div>
+
+            ${tiedCarIds.length >= 2 ? `
+              <div class="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-center justify-between">
+                <span class="text-xs font-bold text-amber-900">⚠️ Tie detected at advancement cutoff (${tiedCarIds.join(' vs ')})!</span>
+                <button onclick="spawnAndJumpToTieBreaker('${stageName}', '${groupName}', ${JSON.stringify(tiedCarIds).replace(/"/g, '&quot;')})" class="red-bg text-white font-black text-[11px] px-3 py-1 rounded shadow uppercase">
+                  ⚡ Spawn Race-Off Heat
+                </button>
+              </div>
+            ` : ''}
+
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50 text-slate-500 uppercase border-b border-slate-200">
+                <tr>
+                  <th class="py-2 px-3">#</th>
+                  <th class="py-2 px-3">Car</th>
+                  <th class="py-2 px-3">Runs</th>
+                  <th class="py-2 px-3">${engine.state.rulesMode === 'AVERAGE' ? 'Avg Finish (Low Wins)' : 'Total Pts (High Wins)'}</th>
+                  <th class="py-2 px-3">TB</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                ${rows.length === 0 ? `<tr><td colspan="5" class="py-4 text-center text-slate-400 italic">No heats recorded for ${groupName} yet.</td></tr>` : ''}
+                ${rows.map((r, idx) => {
+                  const isAdvancing = idx < (stageName === 'FINALS' ? 1 : cutoff) && r.racesCompleted > 0;
+                  return `
+                    <tr class="${isAdvancing ? 'bg-green-50/70 font-bold' : ''}">
+                      <td class="py-2 px-3">${idx + 1} ${isAdvancing ? '✅' : ''}</td>
+                      <td class="py-2 px-3"><span class="font-black text-[#004587]">${r.carId}</span> ${r.carName} <span class="text-slate-400">(${r.cubName})</span></td>
+                      <td class="py-2 px-3">${r.racesCompleted}</td>
+                      <td class="py-2 px-3 font-extrabold">${engine.state.rulesMode === 'AVERAGE' ? (r.racesCompleted ? r.avgFinish : '-') : r.pointsSum}</td>
+                      <td class="py-2 px-3">${r.tieBreakerRank ? `#${r.tieBreakerRank}` : '-'}</td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function spawnAndJumpToTieBreaker(stageName, groupName, carIds) {
+      engine.spawnTieBreakerHeat(stageName, groupName, carIds);
+      currentTapOrder = [];
+      switchTab('RACE_CONTROL');
+    }
+
+    // ==========================================
+    // TAB 4: CHAMPIONSHIP BRACKET
+    // ==========================================
+    function renderBracket() {
+      const container = document.getElementById('bracketContainer');
+
+      // Column 1: 6 Dens Top 2
+      const denQualifiersHtml = DENS.map(d => {
+        const st = engine.getGroupStandings('QUALIFYING', d.id);
+        const q1 = st[0]?.racesCompleted ? `${st[0].carId} (${st[0].carName})` : 'TBD';
+        const q2 = st[1]?.racesCompleted ? `${st[1].carId} (${st[1].carName})` : 'TBD';
+        return `
+          <div class="p-3 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-between text-xs">
+            <span class="font-black text-[#004587] uppercase">${d.emoji} ${d.name}</span>
+            <div class="text-right font-bold text-slate-700">
+              <div>1st: ${q1}</div>
+              <div>2nd: ${q2}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Column 2: Semifinals A & B + Wildcard
+      const semiA = engine.getGroupStandings('SEMIFINALS', 'Semifinal A');
+      const semiB = engine.getGroupStandings('SEMIFINALS', 'Semifinal B');
+      const wc = engine.getGroupStandings('WILDCARD', 'Wildcard Race');
+
+      // Column 3: Grand Final
+      const finals = engine.getGroupStandings('FINALS', 'Grand Final');
+      const champ = finals[0]?.racesCompleted ? finals[0] : null;
+
+      container.innerHTML = `
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
+          <div class="navy-bg text-white px-3 py-2 rounded font-black text-xs uppercase tracking-wider">1. Den Qualifiers (Top 2 Each)</div>
+          ${denQualifiersHtml}
+        </div>
+
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-4">
+          <div class="red-bg text-white px-3 py-2 rounded font-black text-xs uppercase tracking-wider">2. Semifinals (12 Cars)</div>
+          <div>
+            <h4 class="font-black text-xs uppercase text-slate-600 mb-2">Semifinal Group A</h4>
+            <div class="space-y-1 text-xs">
+              ${semiA.length ? semiA.map((r, i) => `<div class="p-2 rounded bg-slate-50 flex justify-between ${i < 2 ? 'font-bold border-l-4 border-green-500' : ''}"><span>#${i+1} ${r.carId} ${r.carName}</span><span>${engine.state.rulesMode==='AVERAGE'?r.avgFinish:r.pointsSum}</span></div>`).join('') : '<p class="text-xs text-slate-400 italic">Waiting for Semifinals...</p>'}
+            </div>
+          </div>
+          <div>
+            <h4 class="font-black text-xs uppercase text-slate-600 mb-2">Semifinal Group B</h4>
+            <div class="space-y-1 text-xs">
+              ${semiB.length ? semiB.map((r, i) => `<div class="p-2 rounded bg-slate-50 flex justify-between ${i < 2 ? 'font-bold border-l-4 border-green-500' : ''}"><span>#${i+1} ${r.carId} ${r.carName}</span><span>${engine.state.rulesMode==='AVERAGE'?r.avgFinish:r.pointsSum}</span></div>`).join('') : '<p class="text-xs text-slate-400 italic">Waiting for Semifinals...</p>'}
+            </div>
+          </div>
+          ${wc.length ? `
+            <div>
+              <h4 class="font-black text-xs uppercase text-amber-700 mb-2">⚡ Wildcard Race (Top 2 Advance)</h4>
+              <div class="space-y-1 text-xs">
+                ${wc.map((r, i) => `<div class="p-2 rounded bg-amber-50 flex justify-between ${i < 2 ? 'font-bold border-l-4 border-[#fbba07]' : ''}"><span>#${i+1} ${r.carId} ${r.carName}</span><span>Finish: ${r.finishSum}</span></div>`).join('')}
+              </div>
+            </div>
+          ` : ''}
+        </div>
+
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-4">
+          <div class="bg-emerald-700 text-white px-3 py-2 rounded font-black text-xs uppercase tracking-wider">3. Grand Final (6 Lanes)</div>
+          ${champ ? `
+            <div class="gold-bg p-4 rounded-xl text-center shadow-inner">
+              <div class="text-3xl mb-1">🏆</div>
+              <div class="text-[11px] font-black uppercase tracking-widest text-slate-800">Pack 130 Champion</div>
+              <div class="text-xl font-black text-[#004587] mt-1">${champ.carId} — ${champ.carName}</div>
+              <div class="text-xs font-bold text-slate-800">${champ.cubName} (${champ.den})</div>
+            </div>
+          ` : ''}
+          <div class="space-y-1.5 text-xs">
+            ${finals.length ? finals.map((r, i) => `
+              <div class="p-2.5 rounded border flex justify-between ${i === 0 && r.racesCompleted ? 'bg-amber-50 border-[#fbba07] font-black' : 'bg-slate-50 border-slate-200'}">
+                <span>#${i+1} ${r.carId} — ${r.carName} (${r.cubName})</span>
+                <span>${engine.state.rulesMode === 'AVERAGE' ? `Avg: ${r.avgFinish}` : `Pts: ${r.pointsSum}`}</span>
+              </div>
+            `).join('') : '<p class="text-xs text-slate-400 italic">Waiting for 6 finalists...</p>'}
+          </div>
+        </div>
+      `;
+    }
+
+    // ==========================================
+    // BACKUP & RESTORE
+    // ==========================================
+    function exportJson() {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(engine.state, null, 2));
+      const dlAnchor = document.createElement('a');
+      dlAnchor.setAttribute("href", dataStr);
+      dlAnchor.setAttribute("download", `pack130_derby_backup_${new Date().toISOString().slice(0,10)}.json`);
+      document.body.appendChild(dlAnchor);
+      dlAnchor.click();
+      dlAnchor.remove();
+    }
+
+    function importJson(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          engine.state = JSON.parse(e.target.result);
+          engine.saveState();
+          renderAll();
+          alert('Backup restored successfully!');
+        } catch (err) {
+          alert('Invalid JSON file.');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function confirmReset() {
+      if (confirm('Reset all cars, heats, and race results?')) {
+        engine.resetAll();
+        currentTapOrder = [];
+        switchTab('CHECK_IN');
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', initApp);
+  </script>
+</body>
+</html>
