@@ -82,7 +82,7 @@
       <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 class="text-lg font-black text-[#004587] uppercase">Webelos Car Check-In & Inspection</h2>
-          <p class="text-xs text-slate-500">Log each car into its Den. Supports any number of cars per Den (automatically balances 6-lane heats).</p>
+          <p class="text-xs text-slate-500">Log each Scout and car into their Den. Supports any number of cars per Den (automatically balances 6-lane heats).</p>
         </div>
         <div class="flex flex-wrap gap-3">
           <button onclick="loadDemoAndRender()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs px-4 py-2.5 rounded-lg border border-slate-300">
@@ -237,6 +237,13 @@
     let currentTapOrder = []; // Stores lane numbers tapped in sequence for active heat
     let activeStandingsStage = 'QUALIFYING';
 
+    // Helper: Always format Scout Name as primary and (Car Name) in brackets
+    function formatScoutAndCar(cubName, carName, carId = '') {
+      const primary = cubName || carId;
+      const secondary = carName ? `(${carName})` : '';
+      return { primary, secondary };
+    }
+
     function initApp() {
       document.getElementById('rulesModeSelect').value = engine.state.rulesMode;
       if (engine.state.stage !== 'CHECK_IN' && engine.state.heats.length > 0) {
@@ -323,8 +330,8 @@
                 <div class="py-2 flex items-center justify-between">
                   <div>
                     <span class="inline-block w-9 font-black text-[#004587]">${c.id}</span>
-                    <span class="font-bold text-slate-800">${c.carName}</span>
-                    <span class="text-slate-500 ml-1">(${c.cubName})</span>
+                    <span class="font-extrabold text-slate-900">${c.cubName}</span>
+                    <span class="text-slate-500 ml-1">(${c.carName})</span>
                   </div>
                   <button onclick="engine.removeCar('${c.id}'); renderCheckIn();" class="text-red-500 hover:text-red-700 font-bold px-1">✕</button>
                 </div>
@@ -460,7 +467,7 @@
       document.getElementById('onTrackTitle').textContent = `ON TRACK — ${activeHeat.group.toUpperCase()} (HEAT ${activeHeat.heatNumber})`;
       document.getElementById('onTrackSubtitle').textContent = activeHeat.status === 'COMPLETED' ? '✅ COMPLETED (TAP TO EDIT)' : '🟢 READY TO RACE';
 
-      // Render 6 tracks (Lanes 1..6)
+      // Render 6 tracks (Lanes 1..6) — SCOUT NAME PRIMARY, (CAR NAME) IN BRACKETS
       onTrackGrid.innerHTML = [1, 2, 3, 4, 5, 6].map(laneNum => {
         const slot = activeHeat.lanes.find(l => l.lane === laneNum);
         if (!slot) {
@@ -489,8 +496,8 @@
               <span class="text-lg font-black text-[#004587]">${slot.carId}</span>
             </div>
             <div class="my-3">
-              <div class="font-extrabold text-sm text-slate-900 truncate">${car?.carName || slot.carId}</div>
-              <div class="text-xs text-slate-500 truncate">${car?.cubName || ''} • ${car?.den || ''}</div>
+              <div class="font-extrabold text-sm text-slate-900 truncate">${car?.cubName || slot.carId}</div>
+              <div class="text-xs text-slate-500 truncate">(${car?.carName || slot.carId}) • ${car?.den || ''}</div>
             </div>
             <div class="pt-2 border-t border-slate-200/80 flex items-center justify-between">
               <span class="text-[11px] font-bold text-slate-400 uppercase">Finish Order:</span>
@@ -505,7 +512,7 @@
 
       document.getElementById('submitHeatBtn').disabled = currentTapOrder.length < activeHeat.lanes.length;
 
-      // Render ON DECK (Next Pending Heat)
+      // Render ON DECK (Next Pending Heat) — SCOUT NAME PRIMARY, (CAR NAME) IN BRACKETS
       const pendingHeats = engine.state.heats.filter(h => h.status === 'PENDING' && h.id !== activeHeat.id);
       const onDeckHeat = pendingHeats[0];
       const onDeckList = document.getElementById('onDeckLanesList');
@@ -520,7 +527,10 @@
           return `
             <div class="flex items-center justify-between py-1.5 px-2.5 bg-amber-50/60 rounded border border-amber-200/80">
               <span class="font-black text-slate-800">Lane ${slot.lane}: <span class="text-[#004587]">${slot.carId}</span></span>
-              <span class="font-semibold text-slate-600">${car?.carName || ''} (${car?.cubName || ''})</span>
+              <span class="text-right">
+                <strong class="font-extrabold text-slate-900">${car?.cubName || ''}</strong>
+                <span class="text-slate-500 ml-1">(${car?.carName || ''})</span>
+              </span>
             </div>
           `;
         }).join('');
@@ -598,7 +608,7 @@
               <thead class="bg-slate-50 text-slate-500 uppercase border-b border-slate-200">
                 <tr>
                   <th class="py-2 px-3">#</th>
-                  <th class="py-2 px-3">Car</th>
+                  <th class="py-2 px-3">Scout (Car)</th>
                   <th class="py-2 px-3">Runs</th>
                   <th class="py-2 px-3">${engine.state.rulesMode === 'AVERAGE' ? 'Avg Finish (Low Wins)' : 'Total Pts (High Wins)'}</th>
                   <th class="py-2 px-3">TB</th>
@@ -611,7 +621,11 @@
                   return `
                     <tr class="${isAdvancing ? 'bg-green-50/70 font-bold' : ''}">
                       <td class="py-2 px-3">${idx + 1} ${isAdvancing ? '✅' : ''}</td>
-                      <td class="py-2 px-3"><span class="font-black text-[#004587]">${r.carId}</span> ${r.carName} <span class="text-slate-400">(${r.cubName})</span></td>
+                      <td class="py-2 px-3">
+                        <span class="font-black text-[#004587] mr-1">${r.carId}</span>
+                        <span class="font-extrabold text-slate-900">${r.cubName}</span>
+                        <span class="text-slate-500 ml-1">(${r.carName})</span>
+                      </td>
                       <td class="py-2 px-3">${r.racesCompleted}</td>
                       <td class="py-2 px-3 font-extrabold">${engine.state.rulesMode === 'AVERAGE' ? (r.racesCompleted ? r.avgFinish : '-') : r.pointsSum}</td>
                       <td class="py-2 px-3">${r.tieBreakerRank ? `#${r.tieBreakerRank}` : '-'}</td>
@@ -637,17 +651,21 @@
     function renderBracket() {
       const container = document.getElementById('bracketContainer');
 
-      // Column 1: 6 Dens Top 2
+      // Column 1: 6 Dens Top 2 — SCOUT NAME PRIMARY, (CAR NAME) IN BRACKETS
       const denQualifiersHtml = DENS.map(d => {
         const st = engine.getGroupStandings('QUALIFYING', d.id);
-        const q1 = st[0]?.racesCompleted ? `${st[0].carId} (${st[0].carName})` : 'TBD';
-        const q2 = st[1]?.racesCompleted ? `${st[1].carId} (${st[1].carName})` : 'TBD';
+        const q1 = st[0]?.racesCompleted ? `<span class="text-[#004587] font-black">${st[0].carId}</span> <strong class="text-slate-900">${st[0].cubName}</strong> <span class="text-slate-500">(${st[0].carName})</span>` : '<span class="text-slate-400">TBD</span>';
+        const q2 = st[1]?.racesCompleted ? `<span class="text-[#004587] font-black">${st[1].carId}</span> <strong class="text-slate-900">${st[1].cubName}</strong> <span class="text-slate-500">(${st[1].carName})</span>` : '<span class="text-slate-400">TBD</span>';
         return `
-          <div class="p-3 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-between text-xs">
-            <span class="font-black text-[#004587] uppercase">${d.emoji} ${d.name}</span>
-            <div class="text-right font-bold text-slate-700">
-              <div>1st: ${q1}</div>
-              <div>2nd: ${q2}</div>
+          <div class="p-3 rounded-lg border border-slate-200 bg-slate-50 space-y-1 text-xs">
+            <div class="font-black text-[#004587] uppercase border-b border-slate-200 pb-1 mb-1">${d.emoji} ${d.name}</div>
+            <div class="flex justify-between">
+              <span class="text-slate-400 font-bold">1st:</span>
+              <span class="text-right">${q1}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400 font-bold">2nd:</span>
+              <span class="text-right">${q2}</span>
             </div>
           </div>
         `;
@@ -657,6 +675,19 @@
       const semiA = engine.getGroupStandings('SEMIFINALS', 'Semifinal A');
       const semiB = engine.getGroupStandings('SEMIFINALS', 'Semifinal B');
       const wc = engine.getGroupStandings('WILDCARD', 'Wildcard Race');
+      const semiAdvanceCutoff = engine.state.rulesMode === 'POINTS' && wc.length === 0 ? 3 : 2;
+
+      const renderBracketRow = (r, i, cutoff, highlightColor = 'border-green-500') => `
+        <div class="p-2 rounded bg-slate-50 flex items-center justify-between gap-2 ${i < cutoff ? `font-bold border-l-4 ${highlightColor}` : ''}">
+          <div class="truncate">
+            <span class="text-slate-400 mr-1">#${i + 1}</span>
+            <span class="font-black text-[#004587] mr-1">${r.carId}</span>
+            <strong class="text-slate-900">${r.cubName}</strong>
+            <span class="text-slate-500 ml-1">(${r.carName})</span>
+          </div>
+          <span class="font-extrabold text-slate-700 shrink-0">${engine.state.rulesMode === 'AVERAGE' ? r.avgFinish : r.pointsSum}</span>
+        </div>
+      `;
 
       // Column 3: Grand Final
       const finals = engine.getGroupStandings('FINALS', 'Grand Final');
@@ -673,20 +704,20 @@
           <div>
             <h4 class="font-black text-xs uppercase text-slate-600 mb-2">Semifinal Group A</h4>
             <div class="space-y-1 text-xs">
-              ${semiA.length ? semiA.map((r, i) => `<div class="p-2 rounded bg-slate-50 flex justify-between ${i < 2 ? 'font-bold border-l-4 border-green-500' : ''}"><span>#${i+1} ${r.carId} ${r.carName}</span><span>${engine.state.rulesMode==='AVERAGE'?r.avgFinish:r.pointsSum}</span></div>`).join('') : '<p class="text-xs text-slate-400 italic">Waiting for Semifinals...</p>'}
+              ${semiA.length ? semiA.map((r, i) => renderBracketRow(r, i, semiAdvanceCutoff)).join('') : '<p class="text-xs text-slate-400 italic">Waiting for Semifinals...</p>'}
             </div>
           </div>
           <div>
             <h4 class="font-black text-xs uppercase text-slate-600 mb-2">Semifinal Group B</h4>
             <div class="space-y-1 text-xs">
-              ${semiB.length ? semiB.map((r, i) => `<div class="p-2 rounded bg-slate-50 flex justify-between ${i < 2 ? 'font-bold border-l-4 border-green-500' : ''}"><span>#${i+1} ${r.carId} ${r.carName}</span><span>${engine.state.rulesMode==='AVERAGE'?r.avgFinish:r.pointsSum}</span></div>`).join('') : '<p class="text-xs text-slate-400 italic">Waiting for Semifinals...</p>'}
+              ${semiB.length ? semiB.map((r, i) => renderBracketRow(r, i, semiAdvanceCutoff)).join('') : '<p class="text-xs text-slate-400 italic">Waiting for Semifinals...</p>'}
             </div>
           </div>
           ${wc.length ? `
             <div>
               <h4 class="font-black text-xs uppercase text-amber-700 mb-2">⚡ Wildcard Race (Top 2 Advance)</h4>
               <div class="space-y-1 text-xs">
-                ${wc.map((r, i) => `<div class="p-2 rounded bg-amber-50 flex justify-between ${i < 2 ? 'font-bold border-l-4 border-[#fbba07]' : ''}"><span>#${i+1} ${r.carId} ${r.carName}</span><span>Finish: ${r.finishSum}</span></div>`).join('')}
+                ${wc.map((r, i) => renderBracketRow(r, i, 2, 'border-[#fbba07]')).join('')}
               </div>
             </div>
           ` : ''}
@@ -698,15 +729,20 @@
             <div class="gold-bg p-4 rounded-xl text-center shadow-inner">
               <div class="text-3xl mb-1">🏆</div>
               <div class="text-[11px] font-black uppercase tracking-widest text-slate-800">Pack 130 Champion</div>
-              <div class="text-xl font-black text-[#004587] mt-1">${champ.carId} — ${champ.carName}</div>
-              <div class="text-xs font-bold text-slate-800">${champ.cubName} (${champ.den})</div>
+              <div class="text-xl font-black text-[#004587] mt-1">${champ.cubName}</div>
+              <div class="text-xs font-bold text-slate-800 mt-0.5"><span class="font-black">${champ.carId}</span> (${champ.carName}) • ${champ.den}</div>
             </div>
           ` : ''}
           <div class="space-y-1.5 text-xs">
             ${finals.length ? finals.map((r, i) => `
-              <div class="p-2.5 rounded border flex justify-between ${i === 0 && r.racesCompleted ? 'bg-amber-50 border-[#fbba07] font-black' : 'bg-slate-50 border-slate-200'}">
-                <span>#${i+1} ${r.carId} — ${r.carName} (${r.cubName})</span>
-                <span>${engine.state.rulesMode === 'AVERAGE' ? `Avg: ${r.avgFinish}` : `Pts: ${r.pointsSum}`}</span>
+              <div class="p-2.5 rounded border flex items-center justify-between gap-2 ${i === 0 && r.racesCompleted ? 'bg-amber-50 border-[#fbba07] font-black' : 'bg-slate-50 border-slate-200'}">
+                <div class="truncate">
+                  <span class="text-slate-400 mr-1">#${i+1}</span>
+                  <span class="font-black text-[#004587] mr-1">${r.carId}</span>
+                  <strong class="text-slate-900">${r.cubName}</strong>
+                  <span class="text-slate-500 ml-1">(${r.carName})</span>
+                </div>
+                <span class="shrink-0 font-extrabold">${engine.state.rulesMode === 'AVERAGE' ? `Avg: ${r.avgFinish}` : `Pts: ${r.pointsSum}`}</span>
               </div>
             `).join('') : '<p class="text-xs text-slate-400 italic">Waiting for 6 finalists...</p>'}
           </div>
