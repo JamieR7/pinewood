@@ -1,6 +1,7 @@
 /**
  * PACK 130 GENEVA - PINEWOOD DERBY ENGINE (derby-engine.js)
  * Pure JS state & scheduling engine for 6 Dens, 6 Lanes, variable car counts.
+ * Complete Audited & Patched Version
  */
 
 const DENS = [
@@ -13,6 +14,18 @@ const DENS = [
 ];
 
 const STORAGE_KEY = 'PACK_130_DERBY_STATE_V1';
+
+/**
+ * Unbiased Fisher-Yates array shuffle
+ */
+function shuffleArray(array) {
+  const copy = [...array];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
 
 class DerbyEngine {
   constructor() {
@@ -58,7 +71,13 @@ class DerbyEngine {
     if (!denObj) throw new Error('Invalid Den');
 
     const denCars = this.state.cars.filter(c => c.den === denId);
-    const nextNum = denCars.length + 1;
+
+    // Prevent duplicate ID collisions if an earlier car was removed
+    const maxNum = denCars.reduce((max, c) => {
+      const num = parseInt(c.id.replace(denObj.prefix, ''), 10) || 0;
+      return Math.max(max, num);
+    }, 0);
+    const nextNum = maxNum + 1;
     const carId = `${denObj.prefix}${nextNum}`;
 
     const newCar = {
@@ -81,7 +100,6 @@ class DerbyEngine {
 
   loadDemoRoster() {
     this.state = this.getInitialState();
-    // Deliberately varied car counts per den (4, 6, 8, 5, 7, 3) to test <6, =6, and >6 math
     const sampleCounts = { Lions: 4, Tigers: 6, Wolves: 8, Bears: 5, Webelos: 7, AOLs: 3 };
     const sampleNames = ['Thunder', 'Swiss Miss', 'Jet d\'Eau', 'Red Arrow', 'Matterhorn', 'Fondue Express', 'Vortex', 'Falcon', 'Cobra'];
     
@@ -101,28 +119,18 @@ class DerbyEngine {
   // ==========================================
   // 2. DETERMINISTIC 6-LANE HEAT GENERATOR
   // ==========================================
-  /**
-   * Generates heats for a group of cars so every car races `runsPerCar` times (default 3)
-   * across up to 6 lanes without repeating a lane in its runs or racing twice in the same heat.
-   */
   generateGroupHeats(cars, stage, groupName, runsPerCar = 3) {
     const N = cars.length;
     if (N === 0) return [];
 
-    // Case 1: 6 or fewer cars -> All cars run together in `runsPerCar` heats, shifting lanes
+    // Case 1: 6 or fewer cars -> All cars run together in `runsPerCar` heats, shifting +1 lane each heat
     if (N <= 6) {
       const heats = [];
       for (let h = 0; h < runsPerCar; h++) {
         const lanes = [];
         for (let cIdx = 0; cIdx < N; cIdx++) {
-          // Shift lane each heat so no car repeats a lane (1 to 6)
-          const laneNum = ((cIdx + h * 2) % 6) + 1;
+          const laneNum = ((cIdx + h) % 6) + 1;
           lanes.push({ lane: laneNum, carId: cars[cIdx].id, finish: null });
-        }
-        // If collision occurred on even shift (doesn't happen with +1), fallback to +1 shift
-        const uniqueLanes = new Set(lanes.map(l => l.lane));
-        if (uniqueLanes.size < N) {
-          lanes.forEach((l, idx) => { l.lane = ((idx + h) % 6) + 1; });
         }
         lanes.sort((a, b) => a.lane - b.lane);
         heats.push({
@@ -141,13 +149,12 @@ class DerbyEngine {
     const totalSlots = N * runsPerCar;
     const numHeats = Math.ceil(totalSlots / 6);
 
-    // Target sizes for each heat (e.g., 21 slots across 4 heats -> [6, 5, 5, 5])
     const targetSizes = Array(numHeats).fill(Math.floor(totalSlots / numHeats));
     for (let i = 0; i < (totalSlots % numHeats); i++) {
       targetSizes[i]++;
     }
 
-    // Fast randomized Latin-square greedy solver with retries
+    // Fast randomized Latin-square greedy solver with retries using unbiased Fisher-Yates shuffle
     for (let attempt = 0; attempt < 400; attempt++) {
       const heatBuckets = Array.from({ length: numHeats }, () => []);
       const carUsedHeats = new Map(cars.map(c => [c.id, new Set()]));
@@ -155,9 +162,8 @@ class DerbyEngine {
       let success = true;
 
       for (let run = 0; run < runsPerCar; run++) {
-        const shuffledCars = [...cars].sort(() => Math.random() - 0.5);
+        const shuffledCars = shuffleArray(cars);
         for (const car of shuffledCars) {
-          // Find heats that have space and don't contain this car yet
           const candidateHeats = [];
           for (let h = 0; h < numHeats; h++) {
             if (
@@ -180,7 +186,6 @@ class DerbyEngine {
             break;
           }
 
-          // Pick heat with most remaining capacity to keep heats balanced
           candidateHeats.sort(
             (a, b) =>
               (targetSizes[b.h] - heatBuckets[b.h].length) -
@@ -256,7 +261,6 @@ class DerbyEngine {
   }
 
   recordHeatResult(heatId, laneFinishesMap) {
-    // laneFinishesMap: { [laneNumber]: finishPosition (1..6) }
     const heat = this.state.heats.find(h => h.id === heatId);
     if (!heat) return;
 
@@ -265,7 +269,6 @@ class DerbyEngine {
     });
     heat.status = 'COMPLETED';
 
-    // Auto-advance activeHeatId to next PENDING heat
     const nextPending = this.state.heats.find(h => h.status === 'PENDING');
     this.state.activeHeatId = nextPending ? nextPending.id : heat.id;
     this.saveState();
@@ -280,15 +283,11 @@ class DerbyEngine {
     this.saveState();
   }
 
-  /**
-   * Computes standings for any stage & group (e.g., stage="QUALIFYING", group="Wolves")
-   */
   getGroupStandings(stage, groupName) {
     const relevantHeats = this.state.heats.filter(
       h => h.stage === stage && h.group === groupName && h.status === 'COMPLETED'
     );
 
-    // Find all cars participating in this stage/group
     const allStageHeats = this.state.heats.filter(
       h => h.stage === stage && h.group === groupName
     );
@@ -310,12 +309,12 @@ class DerbyEngine {
           } else {
             racesCompleted++;
             finishSum += slot.finish;
-            pointsSum += Math.max(1, 7 - slot.finish); // 1st=6, 2nd=5 ... 6th=1
+            pointsSum += Math.max(1, 7 - slot.finish);
           }
         }
       });
 
-      const avgFinish = racesCompleted > 0 ? finishSum / racesCompleted : 999;
+      const exactAvg = racesCompleted > 0 ? finishSum / racesCompleted : 999;
 
       return {
         carId,
@@ -325,24 +324,26 @@ class DerbyEngine {
         racesCompleted,
         finishSum,
         pointsSum,
-        avgFinish: Number(avgFinish.toFixed(2)),
+        exactAvg,
+        avgFinish: Number(exactAvg.toFixed(2)),
         tieBreakerRank
       };
     });
 
-    // Sort by rulesMode, using tieBreakerRank if a race-off was completed
+    // Sort by rulesMode using exact precision before tie-breakers
     stats.sort((a, b) => {
       if (a.racesCompleted === 0 && b.racesCompleted === 0) return 0;
       if (a.racesCompleted === 0) return 1;
       if (b.racesCompleted === 0) return -1;
 
       if (this.state.rulesMode === 'AVERAGE') {
-        if (a.avgFinish !== b.avgFinish) return a.avgFinish - b.avgFinish;
+        // Exact cross-multiplication prevents floating-point rounding false ties
+        const diff = (a.finishSum * b.racesCompleted) - (b.finishSum * a.racesCompleted);
+        if (diff !== 0) return diff;
       } else {
         if (b.pointsSum !== a.pointsSum) return b.pointsSum - a.pointsSum;
       }
 
-      // If tied on primary metric, check head-to-head tie-breaker heat
       if (a.tieBreakerRank !== null && b.tieBreakerRank !== null) {
         return a.tieBreakerRank - b.tieBreakerRank;
       }
@@ -352,9 +353,6 @@ class DerbyEngine {
     return stats;
   }
 
-  /**
-   * Spawns a 1-off tie-breaker race between tied cars in a group
-   */
   spawnTieBreakerHeat(stage, groupName, carIds) {
     const lanes = carIds.slice(0, 6).map((carId, idx) => ({
       lane: idx + 1,
@@ -378,11 +376,12 @@ class DerbyEngine {
     return tbHeat;
   }
 
-  /**
-   * Advances Top 2 from each Den into Semifinal Group A and Semifinal Group B
-   * Splits same-den qualifiers so Den #1 goes to A, Den #2 goes to B (alternating)
-   */
   startSemifinals() {
+    // Idempotency guard: clear any existing Semifinal, Wildcard, or Final heats if re-triggered
+    this.state.heats = this.state.heats.filter(
+      h => h.stage === 'QUALIFYING'
+    );
+
     const groupACars = [];
     const groupBCars = [];
 
@@ -403,7 +402,6 @@ class DerbyEngine {
       }
     });
 
-    // Slide Deck uses 3 heats per semifinal; Manual Plan uses 2 heats per semifinal
     const semiRuns = this.state.rulesMode === 'AVERAGE' ? 3 : 2;
     const semiAHeats = this.generateGroupHeats(groupACars, 'SEMIFINALS', 'Semifinal A', semiRuns);
     const semiBHeats = this.generateGroupHeats(groupBCars, 'SEMIFINALS', 'Semifinal B', semiRuns);
@@ -414,10 +412,12 @@ class DerbyEngine {
     this.saveState();
   }
 
-  /**
-   * Optional Wildcard One-Off Race (Slide Deck rules: 3rd & 4th place from Semis A & B race for final 2 spots)
-   */
   startWildcardRace() {
+    // Idempotency guard: clear any prior Wildcard or Final heats if re-triggered
+    this.state.heats = this.state.heats.filter(
+      h => h.stage === 'QUALIFYING' || h.stage === 'SEMIFINALS'
+    );
+
     const semiA = this.getGroupStandings('SEMIFINALS', 'Semifinal A');
     const semiB = this.getGroupStandings('SEMIFINALS', 'Semifinal B');
 
@@ -435,24 +435,24 @@ class DerbyEngine {
     this.saveState();
   }
 
-  /**
-   * Advances 6 finalists to the Grand Final
-   */
   startGrandFinal() {
+    // Idempotency guard: remove any existing FINALS heats if re-triggered
+    this.state.heats = this.state.heats.filter(
+      h => h.stage !== 'FINALS'
+    );
+
     const semiA = this.getGroupStandings('SEMIFINALS', 'Semifinal A');
     const semiB = this.getGroupStandings('SEMIFINALS', 'Semifinal B');
     let finalistIds = [];
 
     const wcStandings = this.getGroupStandings('WILDCARD', 'Wildcard Race');
     if (wcStandings.length > 0) {
-      // Top 2 from Semi A + Top 2 from Semi B + Top 2 from Wildcard
       finalistIds = [
         semiA[0]?.carId, semiA[1]?.carId,
         semiB[0]?.carId, semiB[1]?.carId,
         wcStandings[0]?.carId, wcStandings[1]?.carId
       ].filter(Boolean);
     } else {
-      // Top 3 from Semi A + Top 3 from Semi B
       finalistIds = [
         semiA[0]?.carId, semiA[1]?.carId, semiA[2]?.carId,
         semiB[0]?.carId, semiB[1]?.carId, semiB[2]?.carId
